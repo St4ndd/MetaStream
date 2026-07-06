@@ -1,0 +1,19 @@
+# Android / Gradle
+quest-app/.gradle/
+quest-app/build/
+quest-app/app/build/
+quest-app/local.properties
+quest-app/captures/
+*.iml
+.idea/
+
+# Keep the Gradle wrapper jar committed (needed by CI):
+!quest-app/gradle/wrapper/gradle-wrapper.jar
+
+# Node / Vercel
+node_modules/
+.vercel/
+
+# OS
+.DS_Store
+Thumbs.db

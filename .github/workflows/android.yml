@@ -1,0 +1,90 @@
+name: Build Quest APK
+
+on:
+  push:
+    branches: [ main, "claude/**" ]
+    tags: [ "v*" ]
+    paths:
+      - "quest-app/**"
+      - ".github/workflows/android.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: quest-app
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install SDK packages
+        run: sdkmanager "platform-tools" "platforms;android-34" "build-tools;34.0.0"
+
+      - name: Make gradlew executable
+        run: chmod +x ./gradlew
+
+      - name: Build debug APK
+        run: ./gradlew --no-daemon assembleDebug
+
+      - name: Rename APK
+        id: apk
+        run: |
+          SRC=$(find app/build/outputs/apk/debug -name "*.apk" | head -n1)
+          VERSION="1.0.${GITHUB_RUN_NUMBER}"
+          if [[ "${GITHUB_REF}" == refs/tags/* ]]; then
+            VERSION="${GITHUB_REF_NAME#v}"
+          fi
+          OUT="MetaStream-${VERSION}.apk"
+          cp "$SRC" "$OUT"
+          echo "path=quest-app/${OUT}" >> "$GITHUB_OUTPUT"
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "Built $OUT"
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: MetaStream-apk
+          path: ${{ steps.apk.outputs.path }}
+          if-no-files-found: error
+
+      - name: Determine release tag
+        id: rel
+        run: |
+          if [[ "${GITHUB_REF}" == refs/tags/* ]]; then
+            echo "tag=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
+            echo "publish=true" >> "$GITHUB_OUTPUT"
+          elif [[ "${GITHUB_REF}" == "refs/heads/main" ]]; then
+            echo "tag=v${{ steps.apk.outputs.version }}" >> "$GITHUB_OUTPUT"
+            echo "publish=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "publish=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Publish GitHub Release
+        if: steps.rel.outputs.publish == 'true'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.rel.outputs.tag }}
+          name: MetaStream ${{ steps.rel.outputs.tag }}
+          body: |
+            Automatisch gebautes MetaStream-APK für Meta Quest 3S.
+
+            **Installation:** APK per SideQuest oder `adb install` auf die Quest sideloaden,
+            App öffnen, QR-Code mit dem Handy scannen und Dateien übertragen.
+          files: ${{ steps.apk.outputs.path }}
+          fail_on_unmatched_files: true
