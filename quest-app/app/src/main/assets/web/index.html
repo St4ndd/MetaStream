@@ -1,0 +1,201 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<meta name="theme-color" content="#0B1020" />
+<title>MetaStream</title>
+<style>
+  :root{
+    --bg:#0B1020; --surface:#161C34; --surface2:#1E2646;
+    --text:#EAF0FF; --muted:#9AA6C7; --accent:#5B8CFF; --accent2:#7A5BFF;
+    --ok:#3ED598; --danger:#FF6B6B; --line:#2A3358;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,system-ui,sans-serif;
+    background:var(--bg);color:var(--text);-webkit-font-smoothing:antialiased}
+  header{position:sticky;top:0;z-index:5;background:rgba(11,16,32,.85);backdrop-filter:blur(10px);
+    border-bottom:1px solid var(--line);padding:14px 18px;display:flex;align-items:center;gap:10px}
+  .logo{width:30px;height:30px;border-radius:8px;background:linear-gradient(135deg,var(--accent),var(--accent2));
+    display:flex;align-items:center;justify-content:center;font-weight:800;font-size:16px}
+  h1{font-size:19px;margin:0;font-weight:700}
+  .sub{font-size:12px;color:var(--muted);margin-left:auto;text-align:right}
+  main{max-width:760px;margin:0 auto;padding:18px}
+  .drop{border:2px dashed var(--line);border-radius:18px;padding:34px 18px;text-align:center;
+    background:var(--surface);transition:.15s;cursor:pointer}
+  .drop.drag{border-color:var(--accent);background:var(--surface2)}
+  .drop .big{font-size:17px;font-weight:600}
+  .drop .small{font-size:13px;color:var(--muted);margin-top:6px}
+  .btn{display:inline-block;margin-top:14px;background:linear-gradient(135deg,var(--accent),var(--accent2));
+    color:#fff;border:none;border-radius:12px;padding:12px 22px;font-size:15px;font-weight:600;cursor:pointer}
+  .row{display:flex;align-items:center;justify-content:space-between;margin:22px 2px 10px}
+  .row h2{font-size:15px;margin:0;font-weight:600}
+  .row .info{font-size:12px;color:var(--muted)}
+  #queue:empty,#list:empty{display:none}
+  .card{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:12px 14px;
+    margin-bottom:8px;display:flex;align-items:center;gap:12px}
+  .ico{width:40px;height:40px;border-radius:10px;background:var(--surface2);display:flex;align-items:center;
+    justify-content:center;font-size:20px;flex:0 0 auto}
+  .meta{min-width:0;flex:1}
+  .name{font-size:14px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .desc{font-size:12px;color:var(--muted);margin-top:2px}
+  .bar{height:6px;border-radius:6px;background:var(--surface2);overflow:hidden;margin-top:8px}
+  .bar > i{display:block;height:100%;width:0;background:linear-gradient(90deg,var(--accent),var(--accent2));transition:width .1s}
+  .actions{display:flex;gap:8px;flex:0 0 auto}
+  a.dl,button.del{border:1px solid var(--line);background:var(--surface2);color:var(--text);
+    border-radius:10px;padding:8px 12px;font-size:13px;text-decoration:none;cursor:pointer}
+  button.del{color:var(--danger)}
+  .empty{color:var(--muted);text-align:center;padding:30px;font-size:14px}
+  .toast{position:fixed;left:50%;bottom:22px;transform:translateX(-50%);background:var(--surface2);
+    border:1px solid var(--line);padding:10px 16px;border-radius:12px;font-size:13px;opacity:0;
+    transition:.2s;pointer-events:none}
+  .toast.show{opacity:1}
+</style>
+</head>
+<body>
+<header>
+  <div class="logo">M</div>
+  <h1>MetaStream</h1>
+  <div class="sub" id="devInfo">verbinde…</div>
+</header>
+<main>
+  <div class="drop" id="drop">
+    <div class="big">Dateien hierher ziehen oder tippen</div>
+    <div class="small">Fotos, Videos &amp; beliebige Dateien — direkt ins Headset</div>
+    <button class="btn" id="pick">Dateien auswählen</button>
+    <input type="file" id="file" multiple hidden />
+  </div>
+
+  <div class="row"><h2>Uploads</h2></div>
+  <div id="queue"></div>
+
+  <div class="row"><h2>Auf dem Gerät</h2><span class="info" id="listInfo"></span></div>
+  <div id="list"></div>
+  <div class="empty" id="emptyMsg">Noch keine Dateien. Lade etwas hoch 👆</div>
+</main>
+<div class="toast" id="toast"></div>
+
+<script>
+const $ = s => document.querySelector(s);
+const drop = $('#drop'), fileInput = $('#file'), queue = $('#queue'),
+      list = $('#list'), emptyMsg = $('#emptyMsg');
+
+function fmtSize(b){
+  if(b<1024) return b+' B';
+  const u=['KB','MB','GB','TB']; let i=-1;
+  do{ b/=1024; i++; }while(b>=1024 && i<u.length-1);
+  return b.toFixed(b<10?1:0)+' '+u[i];
+}
+function fmtSpeed(bps){ return fmtSize(bps)+'/s'; }
+function icon(name){
+  const n=name.toLowerCase();
+  if(/\.(jpg|jpeg|png|gif|webp|heic|bmp|svg)$/.test(n)) return '🖼️';
+  if(/\.(mp4|mov|webm|mkv|avi|m4v)$/.test(n)) return '🎬';
+  if(/\.(mp3|wav|ogg|flac|m4a)$/.test(n)) return '🎵';
+  if(/\.(pdf)$/.test(n)) return '📄';
+  if(/\.(zip|rar|7z|tar|gz)$/.test(n)) return '🗜️';
+  return '📁';
+}
+let toastTimer;
+function toast(msg){
+  const t=$('#toast'); t.textContent=msg; t.classList.add('show');
+  clearTimeout(toastTimer); toastTimer=setTimeout(()=>t.classList.remove('show'),2200);
+}
+
+async function loadInfo(){
+  try{
+    const r = await fetch('/api/info'); const j = await r.json();
+    $('#devInfo').textContent = j.device + ' • ' + fmtSize(j.free) + ' frei';
+  }catch(e){ $('#devInfo').textContent = 'offline'; }
+}
+
+async function loadList(){
+  try{
+    const r = await fetch('/api/files'); const files = await r.json();
+    list.innerHTML='';
+    $('#listInfo').textContent = files.length ? files.length+' Datei(en)' : '';
+    emptyMsg.style.display = files.length ? 'none' : 'block';
+    for(const f of files){
+      const el = document.createElement('div'); el.className='card';
+      el.innerHTML =
+        `<div class="ico">${icon(f.name)}</div>
+         <div class="meta">
+           <div class="name">${escapeHtml(f.name)}</div>
+           <div class="desc">${fmtSize(f.size)} • ${new Date(f.modified).toLocaleString('de-DE')}</div>
+         </div>
+         <div class="actions">
+           <a class="dl" href="/dl/${encodeURIComponent(f.name)}" download>⬇︎</a>
+           <button class="del" data-n="${escapeHtml(f.name)}">🗑</button>
+         </div>`;
+      list.appendChild(el);
+    }
+    list.querySelectorAll('.del').forEach(b=>b.onclick=()=>delFile(b.dataset.n));
+  }catch(e){ /* server not reachable */ }
+}
+
+function escapeHtml(s){return s.replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
+
+async function delFile(name){
+  if(!confirm('"'+name+'" löschen?')) return;
+  await fetch('/api/files/'+encodeURIComponent(name),{method:'DELETE'});
+  toast('Gelöscht'); loadList();
+}
+
+function uploadFile(file){
+  return new Promise(resolve=>{
+    const card=document.createElement('div'); card.className='card';
+    card.innerHTML =
+      `<div class="ico">${icon(file.name)}</div>
+       <div class="meta">
+         <div class="name">${escapeHtml(file.name)}</div>
+         <div class="desc">0% • ${fmtSize(file.size)}</div>
+         <div class="bar"><i></i></div>
+       </div>`;
+    queue.prepend(card);
+    const bar=card.querySelector('.bar > i'), desc=card.querySelector('.desc');
+
+    const xhr=new XMLHttpRequest();
+    xhr.open('PUT','/api/upload');
+    xhr.setRequestHeader('X-Filename', encodeURIComponent(file.name));
+    const start=Date.now();
+    xhr.upload.onprogress=e=>{
+      if(!e.lengthComputable) return;
+      const pct=Math.round(e.loaded/e.total*100);
+      const secs=(Date.now()-start)/1000;
+      const speed=secs>0 ? e.loaded/secs : 0;
+      bar.style.width=pct+'%';
+      desc.textContent=pct+'% • '+fmtSize(file.size)+' • '+fmtSpeed(speed);
+    };
+    xhr.onload=()=>{
+      bar.style.width='100%';
+      const secs=(Date.now()-start)/1000;
+      desc.textContent='Fertig • '+fmtSize(file.size)+' • '+fmtSpeed(file.size/Math.max(secs,0.001));
+      setTimeout(()=>card.remove(),1400);
+      resolve();
+    };
+    xhr.onerror=()=>{ desc.textContent='Fehler beim Upload'; resolve(); };
+    xhr.send(file);
+  });
+}
+
+async function handleFiles(fileList){
+  const files=[...fileList];
+  if(!files.length) return;
+  for(const f of files){ await uploadFile(f); }
+  toast(files.length+' Datei(en) hochgeladen');
+  loadList(); loadInfo();
+}
+
+// interactions
+$('#pick').onclick=e=>{e.stopPropagation();fileInput.click();};
+drop.onclick=()=>fileInput.click();
+fileInput.onchange=()=>{handleFiles(fileInput.files);fileInput.value='';};
+['dragenter','dragover'].forEach(ev=>drop.addEventListener(ev,e=>{e.preventDefault();drop.classList.add('drag');}));
+['dragleave','drop'].forEach(ev=>drop.addEventListener(ev,e=>{e.preventDefault();drop.classList.remove('drag');}));
+drop.addEventListener('drop',e=>{ if(e.dataTransfer.files) handleFiles(e.dataTransfer.files); });
+
+loadInfo(); loadList();
+setInterval(loadList, 5000);
+</script>
+</body>
+</html>

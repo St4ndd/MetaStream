@@ -1,0 +1,13 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Two arrows exchanging = transfer -->
+    <path
+        android:fillColor="#5B8CFF"
+        android:pathData="M39,38 h22 v-8 l16,14 -16,14 v-8 h-22 z" />
+    <path
+        android:fillColor="#EAF0FF"
+        android:pathData="M69,70 h-22 v8 l-16,-14 16,-14 v8 h22 z" />
+</vector>
